@@ -1,12 +1,19 @@
 import { http } from './extend';
 
 ;((doc) => {
+
+  interface CommonObject {
+    [key: string]: any
+  }
+
   const $ = doc.querySelector.bind(doc)
 
   const oDoms = {
     file: $('.file-input'),
     fileImg: $('.file-img'),
   }
+
+  const CHUNK_SIZE = 1024 * 10
 
   const init = () => {
     bindEvent()
@@ -31,7 +38,9 @@ import { http } from './extend';
 
     appendBlobImage(file)
     // appendBase64Image(file)
-    sliceFile(file)
+    file.size < CHUNK_SIZE
+      ? commonUploadFile(file)
+      : sliceUploadFile(file)
   }
 
   // blob
@@ -53,51 +62,119 @@ import { http } from './extend';
     }
   }
 
-  function sliceFile(file: File, chunkSize = 1024) {
-    const { size, name } = file
-    const ret = []
-    const totalIndex = Math.ceil(size / chunkSize)
+  async function getFileHash(file: Blob[]) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker('/getFileHash.ts')
+
+      worker.postMessage(file)
+      worker.onmessage = (e) => {
+        const { hash, percent } = e.data
+        hash && resolve(hash)
+      }
+    })
+  }
+
+  function getSliceChunks(file: File, size:number, chunkSize: number) {
     let start = 0
     let end = chunkSize > size ? size : chunkSize
-    let count = 0
-    const hash = String(Date.now())
 
-    while (start < size) {
-      const blob = file.slice(start, end, 'image')
-      const bf = new File([blob], name)
-      const fd = new FormData()
+    const chunks = []
 
-      fd.append('file', bf, bf.name)
-      fd.append('index', String(count++))
-      fd.append('total', String(totalIndex))
-      fd.append('hash', hash)
+    while (start < end) {
+      const blob = file.slice(start, end)
 
-      ret.push(fd)
       start += chunkSize
       end = start + chunkSize
       end = end > size ? size : end
+      chunks.push(blob)
     }
 
-    console.log(ret);
-    const [, ext] = file.type.split('/')
-    const data = {
-      filename: hash,
-      size: chunkSize,
-      ext,
-    }
-
-    upload(ret, data)
+    return chunks
   }
 
-  function upload(arr: FormData[], params: any) {
-    return Promise.all(arr.map(data => http({
+  async function commonUploadFile(file: File) {
+    const {name, size} = file
+    const bf = new File([file], name)
+    const fd = new FormData()
+
+    const sliceChunks = getSliceChunks(file, size, CHUNK_SIZE)
+    const hash = (await getFileHash(sliceChunks)) as string
+
+    const fdData = {
+      file: bf,
+      size: String(size),
+      hash,
+    }
+
+    appendFormData(fd, fdData)
+
+    uploadFile(fd)
+  }
+
+  function appendFormData(formData: FormData, obj: CommonObject) {
+    Object.keys(obj).forEach(key => {
+      formData.append(key, obj[key])
+    })
+  }
+
+  async function sliceUploadFile(file: File) {
+    const { size, name } = file
+    const ret = []
+    const total = String(Math.ceil(size / CHUNK_SIZE))
+    let start = 0
+    let end = CHUNK_SIZE > size ? size : CHUNK_SIZE
+    let count = 0
+
+    const sliceChunks = getSliceChunks(file, size, CHUNK_SIZE)
+    const hash = (await getFileHash(sliceChunks)) as string
+    // console.log('🚀 ~ hash', hash)
+
+    while (start < size) {
+      const blob = file.slice(start, end)
+      const bf = new File([blob], name)
+      const fd = new FormData()
+
+      const fdData = {
+        file: bf,
+        index: String(count++),
+        total,
+        hash,
+        size,
+      }
+
+      appendFormData(fd, fdData)
+
+      ret.push(fd)
+      sliceChunks.push(blob)
+      start += CHUNK_SIZE
+      end = start + CHUNK_SIZE
+      end = end > size ? size : end
+    }
+
+    const [, ext] = file.type.split('/')
+    const data = {
+      hash,
+      chunk_size: CHUNK_SIZE,
+      size,
+      ext,
+      total,
+    }
+
+    await multipleUploadFile(ret)
+    await merge(JSON.stringify(data))
+  }
+
+  function multipleUploadFile(arr: FormData[]) {
+    return Promise.all(arr.map(data => uploadFile(data)))
+  }
+
+  function uploadFile(data: any) {
+    return http({
       url: 'http://localhost:3001/api/upload',
       data,
-    })))
-      .then((ret: any[]) => {
+    })
+      .then((ret: any) => {
         console.log(ret);
-
-        merge(JSON.stringify(params))
       })
   }
 
