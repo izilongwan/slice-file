@@ -1,6 +1,6 @@
 ;(<any>self).importScripts('/spark.min.js')
 
-interface SliceProps {
+interface ISliceProps {
   file: Blob[]
   spark: any
   numConfig: {
@@ -27,7 +27,7 @@ function onMessage(e: any) {
   })
 }
 
-function loadSlice(params: SliceProps) {
+function loadSlice(params: ISliceProps) {
   const { file, numConfig, spark } = params
   const { count, size } = numConfig
   const fr = new FileReader()
