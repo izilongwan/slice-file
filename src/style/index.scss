@@ -5,24 +5,42 @@
 	&_cell {
 		padding: 10px;
 		border: 1px dashed #ccc;
-		border-radius: 16px;
+		border-radius: 10px;
 
 		&:not(:first-child) {
-			margin-top: 10px;
+			margin-top: 15px;
+		}
+
+		&_text {
+			display: inline-block;
+			width: 68px;
+			padding: 2px;
+			margin-right: 10px;
+			border: 1px solid #999;
+			border-radius: 5px;
+			text-align: center;
+			color: #999;
+		}
+
+		&_url {
+			margin: 5px 0;
 		}
 
 		&_bar {
 			display: inline-block;
-			width: 85%;
+			width: 75%;
 			height: 12px;
-			background-color: #999;
+			background-color: #bbb;
 
 			&_inner {
 				width: 0;
 				max-width: 100%;
 				height: 100%;
 				background-color: #87d7e7;
-				transition: width 0.5s;
+
+				&.transition {
+					transition: width 0.5s;
+				}
 			}
 		}
 
@@ -35,17 +53,19 @@
 		}
 
 		&_percent {
-			@extend .v-top;
 			margin-left: 10px;
 			color: #85d14d;
+			font-weight: bold;
 		}
 
 		&_btn-wrap {
 			text-align: right;
+
+			.btn {
+				&:not(:last-child) {
+					margin-right: 15px;
+				}
+			}
 		}
 	}
-}
-
-.v-top {
-	vertical-align: top;
 }

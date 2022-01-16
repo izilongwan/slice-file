@@ -36,11 +36,11 @@ function loadSlice(params: SliceProps) {
   fr.onload = (e: any) => {
     spark.append(e.target.result)
 
-    numConfig.percent += (100 / size)
+    numConfig.percent += (1 / size)
 
     if (count >= size - 1) {
       self.postMessage({
-        percent: 100,
+        percent: 1,
         hash: spark.end(),
       })
       self.close()
