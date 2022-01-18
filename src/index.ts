@@ -10,9 +10,17 @@ import './style/index.scss';
   interface IUploadFile {
     data: any
     onprogress?: (e: ProgressEvent<EventTarget>) => any
-    total?: number
     idx: number
-    oCell?: HTMLElement
+    oCell?: HTMLElement,
+    total?: number
+    reupload?: boolean
+  }
+
+  interface IUpdateProgressBar {
+    oCell: HTMLElement
+    num: number
+    text?: string
+    reupload?: boolean
   }
 
   type TUploadFile = {
@@ -24,10 +32,11 @@ import './style/index.scss';
 
   const $ = doc.querySelector.bind(doc)
 
-  const oDoms = {
-    file: $('.file-input'),
-    fileImg: $('.file-img'),
-    fileProgressWrap: $('.file-progress-wrap'),
+  const o_doms = {
+    file: <HTMLInputElement>$('.file-input'),
+    file_img: $('.file-img'),
+    file_progress_wrap: $('.file-progress-wrap'),
+    reset_btn: $('.btn-reset'),
   }
 
   const datas = {
@@ -36,11 +45,12 @@ import './style/index.scss';
     btns: [
       { text: '继 续', hidden: true, },
       { text: '暂 停', hidden: true, },
-      { text: '取 消', hidden: true, },
+      { text: '移 除', hidden: true, },
     ],
     xhrObj: <{ [key: string]: XMLHttpRequest[] }> {}
   }
 
+  const DATA_ATTR_NUMBER = 'data-number'
   const CLASS_NAME = 'file-progress-wrap_cell'
   const CHUNK_SIZE = 1024 * 10
 
@@ -50,9 +60,10 @@ import './style/index.scss';
   }
 
   function bindEvent() {
-    oDoms.file?.addEventListener('change', onFileChange)
-    oDoms.fileImg?.addEventListener('load', onImageLoad)
-    oDoms.fileProgressWrap?.addEventListener('click', onProgressClick)
+    o_doms.file?.addEventListener('change', onFileChange)
+    o_doms.file_img?.addEventListener('load', onImageLoad)
+    o_doms.file_progress_wrap?.addEventListener('click', onProgressClick)
+    o_doms.reset_btn?.addEventListener('click', () => o_doms.file.value ='')
   }
 
   function onImageLoad(e: Event) {
@@ -97,8 +108,9 @@ import './style/index.scss';
 
     // 按钮下标
     const fieldIdx = Number(field)
+    const o_parent = findTarget(target as HTMLElement)!
     // cell下标
-    const cellIdx = Number(findTargetIndex(target as HTMLElement)!)
+    const cellIdx = findCellIdx(o_parent)
     // oCell
     const oCell = (<HTMLElement> currentTarget).querySelectorAll(`.${ CLASS_NAME }`)?.[cellIdx] as HTMLElement
     const { xhrObj, hashs, files } = datas
@@ -107,14 +119,18 @@ import './style/index.scss';
 
     switch (fieldIdx) {
       case 0: // 继续
+        const file = files?.[cellIdx]
         const params = {
           file: files?.[cellIdx],
           idx: cellIdx,
           oOldCell: oCell,
-          hash: hashs?.[cellIdx],
+          oldHash: hashs?.[cellIdx],
         }
+
         handleBtnState(oCell, [0, 1], [true, false])
-        sliceUploadFile(params)
+        file.size < CHUNK_SIZE
+          ? commonUploadFile(params)
+          : sliceUploadFile(params)
         break
 
       case 1: // 暂停
@@ -124,7 +140,10 @@ import './style/index.scss';
         break
 
       case 2: // cancel 取消
-        handleBtnState(oCell, [0, 1, 2], [false, false, true])
+        oCell?.remove()
+        files.splice(cellIdx, 1)
+        hashs.splice(cellIdx, 1)
+        ;(<HTMLInputElement>o_doms.file).value = ''
         xhr?.forEach(xhr => xhr?.abort())
         xhr && (xhr.length = 0)
         break
@@ -134,25 +153,30 @@ import './style/index.scss';
     }
   }
 
-  function findTargetIndex(target: HTMLElement) {
+  function findTarget(target: HTMLElement) {
     let node = target
 
     while (node) {
-      const { index } = node.dataset
+      const { className } = node
 
-      if (index) {
-        return index
+      if (className === CLASS_NAME) {
+        return node
       }
 
       node = node.parentNode as HTMLElement
     }
   }
 
+  function findCellIdx(tar: HTMLElement) {
+    const o_list = o_doms.file_progress_wrap?.querySelectorAll(`.${ CLASS_NAME }`)!
+    return [].indexOf.call(o_list, tar as never)
+  }
+
   // blob
   function appendBlobImage(file: File) {
     const url = URL.createObjectURL(file)
 
-    ;(<HTMLImageElement>oDoms.fileImg).src = url
+    ;(<HTMLImageElement>o_doms.file_img).src = url
   }
 
   // base64
@@ -163,7 +187,7 @@ import './style/index.scss';
     fr.onload = (e) => {
       const url = <string>e.target?.result
 
-      ;(<HTMLImageElement>oDoms.fileImg).src = url
+      ;(<HTMLImageElement>o_doms.file_img).src = url
     }
   }
 
@@ -177,11 +201,17 @@ import './style/index.scss';
   }
 
   function getWorkerOnMessage(e: MessageEvent<any>, resolve: (value: unknown) => void, oCell: HTMLElement) {
-    const { hash, percent } = e.data
+    const { hash, percent: num } = e.data
 
-    updateProgressBar(oCell, percent, '读取中')
+    const params = {
+      oCell,
+      num,
+      text: '读取中',
+      reupload: false,
+    }
 
-    hash && resolve(hash)
+    updateProgressBar(params)
+    hash && setTimeout(() => resolve(hash), 500);
   }
 
   function getSliceChunks(file: File, size:number, chunkSize: number) {
@@ -203,20 +233,30 @@ import './style/index.scss';
   }
 
   async function commonUploadFile(params: TUploadFile) {
-    const { file, idx, oOldCell } = params
+    const { file, idx, oOldCell, oldHash = '' } = params
+    const reupload = oOldCell ? true : false
     const { name, size } = file
     const bf = new File([file], name)
     const fd = new FormData()
 
-    const oCell = oOldCell || initProgressBar(oDoms.fileProgressWrap!, file, idx!)!
-    const sliceChunks = getSliceChunks(file, size, CHUNK_SIZE)
-    const hash = (await getFileHash(sliceChunks, oCell)) as string
+    const oCell = oOldCell || initProgressBar(o_doms.file_progress_wrap!, file)!
 
-    const { classList } = oCell.querySelector(`.${ CLASS_NAME }_bar_inner`)!
+    let hash = oldHash
 
-    classList?.remove('transition')
-    updateProgressBar(oCell, 0)
-    classList?.add('transition')
+    if (!hash) {
+      const sliceChunks = getSliceChunks(file, size, CHUNK_SIZE)
+
+      hash = (await getFileHash(sliceChunks, oCell)) as string
+    }
+
+    // 重新上传
+    if (reupload) {
+      const { classList } = oCell.querySelector(`.${ CLASS_NAME }_bar_inner`)!
+
+      classList?.remove('transition')
+      updateProgressBar({ oCell, num: 0, reupload })
+      classList?.add('transition')
+    }
 
     const fdData = {
       file: bf,
@@ -230,7 +270,7 @@ import './style/index.scss';
 
     const [err, ret] = await uploadFile({
       data: fd,
-      onprogress: (e) => onProgress(e, oCell),
+      onprogress: (e) => onProgress(e, oCell,    reupload),
       idx: idx!,
     })
 
@@ -241,7 +281,7 @@ import './style/index.scss';
     const { code, data } = ret
 
     if (code === 0) {
-      oCell && uploadFileFinish(oCell, data.url)
+      oCell && uploadFileFinish(oCell, data.url, reupload)
     }
   }
 
@@ -283,10 +323,11 @@ import './style/index.scss';
 
   async function sliceUploadFile(params: TUploadFile) {
     const { file, idx, oOldCell, oldHash = '' } = params
+    const reupload = oOldCell ? true : false
     const { size } = file
     const total = String(Math.ceil(size / CHUNK_SIZE))
 
-    const oCell = oOldCell || initProgressBar(oDoms.fileProgressWrap!, file, idx!)
+    const oCell = oOldCell || initProgressBar(o_doms.file_progress_wrap!, file)
 
     let hash = oldHash
 
@@ -295,15 +336,8 @@ import './style/index.scss';
       hash = (await getFileHash(sliceChunks, oCell)) as string
 
       datas.hashs.push(hash)
-
-      const { classList } = oCell.querySelector(`.${ CLASS_NAME }_bar_inner`)!
-
-      classList?.remove('transition')
-      updateProgressBar(oCell, 0)
-      classList?.add('transition')
     }
     // console.log('🚀 ~ hash', hash)
-
 
     const [, ext] = file.type.split('/')
     const data = {
@@ -329,8 +363,22 @@ import './style/index.scss';
     const { is_exist, url, chunks } = data0
 
     if (is_exist) {
-      uploadFileFinish(oCell, url)
+      uploadFileFinish(oCell, url, reupload)
       return
+    }
+
+    // 重新上传
+    if (reupload) {
+      const { classList } = oCell.querySelector(`.${ CLASS_NAME }_bar_inner`)!
+
+      classList?.remove('transition')
+      const params1 = {
+        oCell,
+        num: 0,
+        reupload,
+      }
+      updateProgressBar(params1)
+      classList?.add('transition')
     }
 
     handleBtnState(oCell, [0, 1, 2], [true, false, false])
@@ -356,7 +404,7 @@ import './style/index.scss';
     if (ret3.code === 0) {
       const { data: { url } } = ret3
 
-      uploadFileFinish(oCell, url)
+      uploadFileFinish(oCell, url, reupload)
     }
   }
 
@@ -383,7 +431,7 @@ import './style/index.scss';
   }
 
   function uploadFile(params: IUploadFile) {
-    const { data, onprogress, total = 0, idx, oCell } = params
+    const { data, onprogress, total = 0, idx, oCell, reupload = false } = params
     const { xhrObj } = datas
 
     const xhrArr = xhrObj[idx]
@@ -400,13 +448,19 @@ import './style/index.scss';
       // console.log('🚀 ~ ret', ret)
 
       if (oCell && total) {
-        const dataNumAttr = 'data-number'
-        const strNum = oCell.getAttribute(dataNumAttr) ?? '0'
+        const strNum = oCell.getAttribute(DATA_ATTR_NUMBER) ?? '0'
         const num1 = parseFloat(strNum) || 0
         const num2 = num1 + 1 / total
+        const num = num2 > 1 ? 1 : num2
         // console.log('🚀 ~', num1, num2, total)
-        updateProgressBar(oCell, num2)
-        oCell.setAttribute(dataNumAttr, String(num2 > 1 ? 1 : num2))
+        const params1 = {
+          oCell,
+          num,
+          reupload,
+        }
+
+        updateProgressBar(params1)
+        oCell.setAttribute(DATA_ATTR_NUMBER, String(num))
       }
 
       return ret
@@ -426,14 +480,20 @@ import './style/index.scss';
     })
   }
 
-  function onProgress(e: ProgressEvent<EventTarget>, oCell: HTMLElement) {
+  function onProgress(e: ProgressEvent<EventTarget>, oCell: HTMLElement, reupload: boolean) {
     const { total, loaded } = e
     // console.log(loaded / total);
 
-    updateProgressBar(oCell, loaded / total)
+    const params = {
+      oCell,
+      num: loaded / total,
+      reupload,
+    }
+
+    updateProgressBar(params)
   }
 
-  function createProgressBars(file: File, idx: number, percent: number) {
+  function createProgressBars(file: File, percent: number) {
     const oFrag = new DocumentFragment()
     const oCell = doc.createElement('div')
     const oBar = doc.createElement('div')
@@ -445,7 +505,6 @@ import './style/index.scss';
 
     const { name } = file
 
-    oCell.setAttribute('data-index', String(idx))
     oCell.className = CLASS_NAME
     oBar.className = `${ CLASS_NAME }_bar`
     oInnerBar.className = `${ oBar.className }_inner transition`
@@ -475,7 +534,17 @@ import './style/index.scss';
     return { oFrag, oCell }
   }
 
-  function updateProgressBar(oCell: HTMLElement, num: number, text = '上传中') {
+  function updateProgressBar(params: IUpdateProgressBar) {
+    const { oCell, num, text = '上传中', reupload = false } = params
+
+    if (reupload) {
+      const oldNum = Number(oCell.getAttribute(DATA_ATTR_NUMBER) || 0)
+
+      if (num < oldNum) {
+        return
+      }
+    }
+
     const oText = oCell.querySelector(`.${ CLASS_NAME }_text`)!
     const oPercent = oCell.querySelector(`.${ CLASS_NAME }_percent`)!
     const oBar: HTMLElement = oCell.querySelector(`.${ CLASS_NAME }_bar_inner`)!
@@ -507,10 +576,16 @@ import './style/index.scss';
     return oLink
   }
 
-  function uploadFileFinish(oCell: HTMLElement, url: string) {
-    const hiddenArr = datas.btns.map((_, i) => true)
+  function uploadFileFinish(oCell: HTMLElement, url: string, reupload: boolean) {
+    const hiddenArr = datas.btns.map((_, i) => i === 2 ? false : true)
 
-    updateProgressBar(oCell, 1, '上传完成')
+    const params = {
+      oCell,
+      num: 1,
+      text: '上传完成',
+      reupload,
+    }
+    updateProgressBar(params)
     handleBtnState(oCell, hiddenArr.map((_, i) => i), hiddenArr)
     createFileUrl(oCell, url)
   }
@@ -521,8 +596,8 @@ import './style/index.scss';
     idxArr.forEach(idx => oBtns[idx].hidden = hiddenArr[idx])
   }
 
-  function initProgressBar(dom: Element, file: File, idx: number, percent = 0) {
-    const {oFrag, oCell} = createProgressBars(file, idx, percent)
+  function initProgressBar(dom: Element, file: File, percent = 0) {
+    const {oFrag, oCell} = createProgressBars(file, percent)
 
     dom.appendChild(oFrag)
 
