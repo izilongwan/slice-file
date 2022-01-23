@@ -235,7 +235,7 @@ import './style/index.scss';
   async function commonUploadFile(params: TUploadFile) {
     const { file, idx, oOldCell, oldHash = '' } = params
     const reupload = oOldCell ? true : false
-    const { name, size } = file
+    const { name, size, type } = file
     const bf = new File([file], name)
     const fd = new FormData()
 
@@ -278,11 +278,28 @@ import './style/index.scss';
       return
     }
 
-    const { code, data } = ret
+    const { code } = ret
 
-    if (code === 0) {
-      oCell && uploadFileFinish(oCell, data.url, reupload)
+    if (code !== 0) {
+      return
     }
+
+    const [, ext] = type.split('/')
+    const filename = `${ hash }.${ ext }`
+
+    const [err4, ret4] = await uploadToQiniu({ filename })
+
+    if (err4) {
+      return
+    }
+
+    const { code: code4, data: data4, } = ret4
+
+    if (code4 !== 0) {
+      return
+    }
+
+    oCell && uploadFileFinish(oCell, data4.url, reupload)
   }
 
   function appendFormData(formData: FormData, obj: ICommonObject) {
@@ -324,7 +341,7 @@ import './style/index.scss';
   async function sliceUploadFile(params: TUploadFile) {
     const { file, idx, oOldCell, oldHash = '' } = params
     const reupload = oOldCell ? true : false
-    const { size } = file
+    const { size, type } = file
     const total = String(Math.ceil(size / CHUNK_SIZE))
 
     const oCell = oOldCell || initProgressBar(o_doms.file_progress_wrap!, file)
@@ -339,7 +356,8 @@ import './style/index.scss';
     }
     // console.log('🚀 ~ hash', hash)
 
-    const [, ext] = file.type.split('/')
+    const [, ext] = type.split('/')
+    const filename = `${ hash }.${ ext }`
     const data = {
       hash,
       chunk_size: CHUNK_SIZE,
@@ -363,7 +381,20 @@ import './style/index.scss';
     const { is_exist, url, chunks } = data0
 
     if (is_exist) {
-      uploadFileFinish(oCell, url, reupload)
+      const [err4, ret4] = await uploadToQiniu({ filename })
+
+      if (err4) {
+        return
+      }
+
+      const { code: code4, data: data4, message: msg4, } = ret4
+
+      if (code4 !== 0) {
+        uploadFileFinish(oCell, '', reupload, msg4)
+        return
+      }
+
+      uploadFileFinish(oCell, data4.url, reupload)
       return
     }
 
@@ -401,11 +432,24 @@ import './style/index.scss';
       return
     }
 
-    if (ret3.code === 0) {
-      const { data: { url } } = ret3
-
-      uploadFileFinish(oCell, url, reupload)
+    if (ret3.code !== 0) {
+      return
     }
+
+    const [err4, ret4] = await uploadToQiniu({ filename })
+
+    if (err4) {
+      return
+    }
+
+    const { code: code4, data: data4, message: msg4 } = ret4
+
+    if (code4 !== 0) {
+      uploadFileFinish(oCell, '', reupload, msg4)
+      return
+    }
+
+    uploadFileFinish(oCell, data4.url, reupload)
   }
 
   function multipleUploadFile(arr: FormData[], idx: number, oCell: HTMLElement) {
@@ -477,6 +521,16 @@ import './style/index.scss';
     }).then(ret => {
       console.log(ret)
       return ret
+    })
+  }
+
+  function uploadToQiniu (data: { filename: string }) {
+    return http({
+      url: 'http://localhost:3001/api/upload_to_qiniu',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      data: JSON.stringify(data),
     })
   }
 
@@ -576,18 +630,19 @@ import './style/index.scss';
     return oLink
   }
 
-  function uploadFileFinish(oCell: HTMLElement, url: string, reupload: boolean) {
+  function uploadFileFinish(oCell: HTMLElement, url: string, reupload: boolean, text = '上传完成') {
     const hiddenArr = datas.btns.map((_, i) => i === 2 ? false : true)
 
     const params = {
       oCell,
       num: 1,
-      text: '上传完成',
+      text,
       reupload,
     }
+
     updateProgressBar(params)
     handleBtnState(oCell, hiddenArr.map((_, i) => i), hiddenArr)
-    createFileUrl(oCell, url)
+    url && createFileUrl(oCell, url)
   }
 
   function handleBtnState(oCell: HTMLElement, idxArr: number[], hiddenArr: boolean[] = []) {
