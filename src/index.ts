@@ -287,7 +287,7 @@ import './style/index.scss';
     const [, ext] = type.split('/')
     const filename = `${ hash }.${ ext }`
 
-    const [err4, ret4] = await uploadToQiniu({ filename })
+    const [err4, ret4] = await uploadToQiniu({ filename, hash, ext })
 
     if (err4) {
       return
@@ -381,7 +381,7 @@ import './style/index.scss';
     const { is_exist, url, chunks } = data0
 
     if (is_exist) {
-      const [err4, ret4] = await uploadToQiniu({ filename })
+      const [err4, ret4] = await uploadToQiniu({ filename, hash, ext })
 
       if (err4) {
         return
@@ -436,7 +436,7 @@ import './style/index.scss';
       return
     }
 
-    const [err4, ret4] = await uploadToQiniu({ filename })
+    const [err4, ret4] = await uploadToQiniu({ filename, hash, ext })
 
     if (err4) {
       return
@@ -524,7 +524,7 @@ import './style/index.scss';
     })
   }
 
-  function uploadToQiniu (data: { filename: string }) {
+  function uploadToQiniu (data: { filename: string, hash: string, ext: string }) {
     return http({
       url: 'http://localhost:3001/api/upload_to_qiniu',
       headers: {
