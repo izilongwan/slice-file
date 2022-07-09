@@ -1,5 +1,7 @@
 import { http } from './extend';
 import './style/index.scss';
+import 'xgplayer'
+import HlsPlayer from 'xgplayer-hls'
 
 ((doc) => {
 
@@ -57,6 +59,7 @@ import './style/index.scss';
 
   const init = () => {
     bindEvent()
+    runPlayer('http://localhost:3001/1d1d7404f5bf0584d5005682e29efac6/1d1d7404f5bf0584d5005682e29efac6.m3u8')
   }
 
   function bindEvent() {
@@ -466,7 +469,7 @@ import './style/index.scss';
 
   function checkFileState(data: ICommonObject) {
     return http({
-      url: 'http://localhost:3001/api/check_file_state',
+      url: 'http://localhost:3001/http://localhost:3001/1d1d7404f5bf0584d5005682e29efac6/1d1d7404f5bf0584d5005682e29efac6/api/check_file_state',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -483,7 +486,7 @@ import './style/index.scss';
       : xhrObj[idx] = []
 
     return http({
-      url: 'http://localhost:3001/api/upload',
+      url: 'http://localhost:3001/http://localhost:3001/1d1d7404f5bf0584d5005682e29efac6/1d1d7404f5bf0584d5005682e29efac6/api/upload',
       data,
       onprogress,
       xhrArr,
@@ -513,7 +516,7 @@ import './style/index.scss';
 
   function merge(data: ICommonObject): Promise<any> {
     return http({
-      url: 'http://localhost:3001/api/merge',
+      url: 'http://localhost:3001/http://localhost:3001/1d1d7404f5bf0584d5005682e29efac6/1d1d7404f5bf0584d5005682e29efac6/api/merge',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -526,7 +529,7 @@ import './style/index.scss';
 
   function uploadToQiniu (data: { filename: string, hash: string, ext: string }) {
     return http({
-      url: 'http://localhost:3001/api/upload_to_qiniu',
+      url: 'http://localhost:3001/http://localhost:3001/1d1d7404f5bf0584d5005682e29efac6/1d1d7404f5bf0584d5005682e29efac6/api/upload_to_qiniu',
       headers: {
         'Content-Type': 'application/json',
       },
@@ -657,6 +660,13 @@ import './style/index.scss';
     dom.appendChild(oFrag)
 
     return oCell
+  }
+
+  function runPlayer(url: string) {
+    const player = new HlsPlayer({
+      id: 'video',
+      url,
+    })
   }
 
   init()

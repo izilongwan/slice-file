@@ -12,5 +12,9 @@
   "devDependencies": {
     "sass": "^1.48.0",
     "vite": "^2.7.10"
+  },
+  "dependencies": {
+    "xgplayer": "^2.31.6",
+    "xgplayer-hls": "^2.5.2"
   }
 }
